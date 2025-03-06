@@ -79,6 +79,9 @@ public:
 
   /// Pointer to the update event connection
   gazebo::event::ConnectionPtr update_connection_{nullptr};
+
+  /// Compute twist in the local coordinate frame
+  bool local_twist_;
 };
 
 GazeboRosP3D::GazeboRosP3D()
@@ -174,6 +177,13 @@ void GazeboRosP3D::Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
     impl_->frame_name_ = sdf->GetElement("frame_name")->Get<std::string>();
   }
 
+  if (!sdf->HasElement("local_twist")) {
+    RCLCPP_DEBUG(impl_->ros_node_->get_logger(), "p3d plugin missing <local_twist>, defaults to false");
+    impl_->local_twist_ = false;
+  } else {
+    impl_->local_twist_ = sdf->GetElement("local_twist")->Get<bool>();
+  }
+
   // If frame_name specified is "/world", "world", "/map" or "map" report
   // back inertial values in the gazebo world
   if (impl_->frame_name_ != "/world" && impl_->frame_name_ != "world" &&
@@ -236,8 +246,18 @@ void GazeboRosP3DPrivate::OnUpdate(const gazebo::common::UpdateInfo & info)
   pose_msg.child_frame_id = link_->GetName();
 
   // Get inertial rates
-  ignition::math::Vector3d vpos = link_->WorldLinearVel();
-  ignition::math::Vector3d veul = link_->WorldAngularVel();
+  ignition::math::Vector3d vpos;
+  ignition::math::Vector3d veul;
+
+  if (this->local_twist_) 
+  {
+    vpos = link_->RelativeLinearVel();
+    veul = link_->RelativeAngularVel();
+  } else 
+  {
+    vpos = link_->WorldLinearVel();
+    veul = link_->WorldAngularVel();
+  }
 
   // Get pose/orientation
   auto pose = link_->WorldPose();
